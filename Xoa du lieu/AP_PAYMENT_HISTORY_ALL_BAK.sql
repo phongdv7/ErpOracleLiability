@@ -1,0 +1,65 @@
+-- Create table
+--drop table BACKUP.EVN_AP_PAYMENT_HISTORY_ALL_BAK
+create table BACKUP.EVN_AP_PAYMENT_HISTORY_ALL
+(
+  PAYMENT_HISTORY_ID          NUMBER(15) not null,
+  CHECK_ID                    NUMBER(15) not null,
+  ACCOUNTING_DATE             DATE not null,
+  TRANSACTION_TYPE            VARCHAR2(30) not null,
+  POSTED_FLAG                 VARCHAR2(1) not null,
+  MATCHED_FLAG                VARCHAR2(1),
+  ACCOUNTING_EVENT_ID         NUMBER(15),
+  ORG_ID                      NUMBER(15),
+  CREATION_DATE               DATE not null,
+  CREATED_BY                  NUMBER(15) not null,
+  LAST_UPDATE_DATE            DATE not null,
+  LAST_UPDATED_BY             NUMBER(15) not null,
+  LAST_UPDATE_LOGIN           NUMBER(15),
+  PROGRAM_UPDATE_DATE         DATE,
+  PROGRAM_APPLICATION_ID      NUMBER(15),
+  PROGRAM_ID                  NUMBER(15),
+  REQUEST_ID                  NUMBER(15),
+  REV_PMT_HIST_ID             NUMBER(15),
+  TRX_BANK_AMOUNT             NUMBER,
+  ERRORS_BANK_AMOUNT          NUMBER,
+  CHARGES_BANK_AMOUNT         NUMBER,
+  TRX_PMT_AMOUNT              NUMBER not null,
+  ERRORS_PMT_AMOUNT           NUMBER,
+  CHARGES_PMT_AMOUNT          NUMBER,
+  TRX_BASE_AMOUNT             NUMBER,
+  ERRORS_BASE_AMOUNT          NUMBER,
+  CHARGES_BASE_AMOUNT         NUMBER,
+  BANK_CURRENCY_CODE          VARCHAR2(15),
+  BANK_TO_BASE_XRATE_TYPE     VARCHAR2(30),
+  BANK_TO_BASE_XRATE_DATE     DATE,
+  BANK_TO_BASE_XRATE          NUMBER,
+  PMT_CURRENCY_CODE           VARCHAR2(15) not null,
+  PMT_TO_BASE_XRATE_TYPE      VARCHAR2(30),
+  PMT_TO_BASE_XRATE_DATE      DATE,
+  PMT_TO_BASE_XRATE           NUMBER,
+  MRC_PMT_TO_BASE_XRATE_TYPE  VARCHAR2(2000),
+  MRC_PMT_TO_BASE_XRATE_DATE  VARCHAR2(2000),
+  MRC_PMT_TO_BASE_XRATE       VARCHAR2(2000),
+  MRC_BANK_TO_BASE_XRATE_TYPE VARCHAR2(2000),
+  MRC_BANK_TO_BASE_XRATE_DATE VARCHAR2(2000),
+  MRC_BANK_TO_BASE_XRATE      VARCHAR2(2000),
+  MRC_TRX_BASE_AMOUNT         VARCHAR2(2000),
+  MRC_ERRORS_BASE_AMOUNT      VARCHAR2(2000),
+  MRC_CHARGES_BASE_AMOUNT     VARCHAR2(2000),
+  RELATED_EVENT_ID            NUMBER(15),
+  HISTORICAL_FLAG             VARCHAR2(1),
+  INVOICE_ADJUSTMENT_EVENT_ID NUMBER(15),
+  GAIN_LOSS_INDICATOR         VARCHAR2(1)
+)
+tablespace APPS_TS_TX_DATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 128K
+    next 128K
+    minextents 1
+    maxextents unlimited
+    pctincrease 0
+  );

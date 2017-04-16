@@ -1,0 +1,46 @@
+select *
+  from (select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'NLS TRANSLATION'
+           and lookup_code = 'APPROVED'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'NLS TRANSLATION'
+           and lookup_code = 'NEVER APPROVED'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'NLS TRANSLATION'
+           and lookup_code = 'CANCELLED'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'NLS TRANSLATION'
+           and lookup_code = 'NEEDS REAPPROVAL'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'PREPAY STATUS'
+           and lookup_code = 'UNPAID'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'PREPAY STATUS'
+           and lookup_code = 'FULL'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'PREPAY STATUS'
+           and lookup_code = 'PERMANENT'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'PREPAY STATUS'
+           and lookup_code = 'AVAILABLE'
+        union all
+        select meaning, lookup_code, language
+          from fnd_lookup_values
+         where lookup_type = 'PREPAY STATUS'
+           and lookup_code = 'UNAPPROVED')
+ where language = 'US'

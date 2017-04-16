@@ -1,0 +1,35 @@
+--Get responsibility_id
+select fr.responsibility_id, fpov.profile_option_value
+  from applsys.fnd_profile_option_values fpov,
+       applsys.fnd_profile_options       fpo,
+       applsys.fnd_profile_options_tl    fpot,
+       applsys.fnd_responsibility_tl     fr
+ where 1 = 1
+   and fpo.profile_option_name = fpot.profile_option_name
+   and fpo.profile_option_id = fpov.profile_option_id
+   and fr.responsibility_id(+) = fpov.level_value
+      -- AND fr.responsibility_id = :$PROFILES$.RESP_ID
+   and fpot.profile_option_name = 'ORG_ID'
+      --and fpov.profile_option_value = '11'
+   and fr.responsibility_name like '%Super%User%'
+   and fr.application_id = 275
+   and fpov.profile_option_value = '88';
+--------------------------------------------------------------------------------
+--Get short name application
+select distinct rn.application_id,
+                substr(rn.responsibility_name,
+                       (instr(rn.responsibility_name, '_', 1, 1) + 1),
+                       2)
+  from fnd_responsibility_tl rn
+ where rn.responsibility_name like '%Super%User%';
+--------------------------------------------------------------------------------
+--Get application info
+select fa.application_id         "Application ID",
+       fat.application_name      "Application Name",
+       fa.application_short_name "Application Short Name",
+       fa.basepath               "Basepath"
+  from fnd_application fa, fnd_application_tl fat
+ where fa.application_id = fat.application_id
+   and fat.language = userenv('LANG')
+-- AND fat.application_name = 'Payables'  -- <change it>
+ order by fat.application_name;

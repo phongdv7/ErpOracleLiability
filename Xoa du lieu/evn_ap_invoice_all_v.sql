@@ -1,0 +1,5 @@
+create view evn_ap_invoice_all_v as
+select inv.invoice_id, inv.invoice_num, inv.description, inv.gl_date, v.branch_code
+  from ap.ap_invoices_all inv, fpt_branches_v v
+ where inv.org_id = v.org_id
+ order by v.branch_code, invoice_num;

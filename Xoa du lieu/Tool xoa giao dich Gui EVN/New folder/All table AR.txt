@@ -1,0 +1,14 @@
+delete AR_PAYMENT_SCHEDULES_ALL a where a.last_updated_by <> -1;
+delete AR_ADJUSTMENTS_ALL a;
+delete AR_RECEIVABLE_APPLICATIONS_ALL a;
+delete AR_TRX_SUMMARY_HIST a;
+delete RA_CUSTOMER_TRX_ALL a;
+delete RA_CUSTOMER_TRX_LINES_ALL a;
+delete RA_CUSTOMER_TRX_LINES_GT a;
+delete RA_CUST_TRX_LINE_GL_DIST_ALL a;
+delete RA_CUST_TRX_LINE_SALESREPS_ALL a;
+delete AR_CASH_RECEIPT_HISTORY_ALL a;
+delete AR_CASH_RECEIPTS_ALL a;
+delete AR_CASH_RECEIPTS a;
+delete AR_MISC_CASH_DISTRIBUTIONS_ALL a;
+delete ra_interface_lines_all;

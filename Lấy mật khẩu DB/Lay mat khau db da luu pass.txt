@@ -1,0 +1,5 @@
+﻿vào đường dẫn
+C:\Users\phongdv7\AppData\Roaming\PLSQL Developer\Preferences\phongdv7\user.prefs
+Kéo xuống dưới tìm
+[LogonHistory]
+dùng tool dịch pass word

@@ -1,0 +1,19 @@
+create or replace view evn_udd_ar_receipts_v as
+select distinct cr.cash_receipt_id,
+                cr.receipt_number,
+                cr.receipt_date,
+                cr.reversal_date,
+                cr.receivables_trx_id,
+                cr.comments,
+                b.branch_code
+  from ar_cash_receipts_all         cr,
+       fpt_branches_v               b,
+       xla.xla_transaction_entities xte,
+       xla.xla_events               xe
+ where cr.org_id = b.org_id
+   and cr.cash_receipt_id = xte.source_id_int_1
+   and xte.application_id = 222
+   and xte.entity_code = 'RECEIPTS'
+   and xte.entity_id = xe.entity_id
+   and xe.application_id = 222
+   and xe.event_status_code <> 'P';

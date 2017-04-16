@@ -1,0 +1,912 @@
+﻿create or replace package evn_update_date_pkg is
+
+  g_gl_journal     constant varchar2(20) := 'GL_JOURNAL';
+  g_ap_invoice     constant varchar2(20) := 'AP_INVOICE';
+  g_ap_payment     constant varchar2(20) := 'AP_PAYMENT';
+  g_ar_transaction constant varchar2(20) := 'AR_TRANSACTION';
+  g_ar_receipt     constant varchar2(20) := 'AR_RECEIPT';
+  g_date_format    constant varchar2(30) := 'rrrr/mm/dd hh24:mi:ss';
+
+  procedure gl_journal(errbuf      out nocopy varchar2,
+                       retcode     out nocopy varchar2,
+                       p_ledger_id number,
+                       p_segment1  varchar2,
+                       p_batch_id  number,
+                       p_new_date  varchar2);
+  procedure ap_invoice_date(errbuf       out nocopy varchar2,
+                            retcode      out nocopy varchar2,
+                            p_company_code   varchar2,
+                            p_invoice_id number,
+                            p_new_date   varchar2);
+  procedure ap_invoice(errbuf       out nocopy varchar2,
+                       retcode      out nocopy varchar2,
+                       p_company_code   varchar2,
+                       p_invoice_id number,
+                       p_new_date   varchar2);
+  procedure ap_payment(errbuf     out nocopy varchar2,
+                       retcode    out nocopy varchar2,
+                       p_segment1 varchar2,
+                       p_check_id number,
+                       p_new_date varchar2);
+  procedure ar_transaction(errbuf            out nocopy varchar2,
+                           retcode           out nocopy varchar2,
+                           p_segment1        varchar2,
+                           p_customer_trx_id number,
+                           p_new_date        varchar2);
+  procedure ar_receipt(errbuf            out nocopy varchar2,
+                       retcode           out nocopy varchar2,
+                       p_company_code        varchar2,
+                       p_cash_receipt_id number,
+                       p_new_date        varchar2);
+  procedure fa_asset(errbuf           out nocopy varchar2,
+                     retcode          out nocopy varchar2,
+                     p_book_type_code varchar2,
+                     p_asset_id       number,
+                     p_new_date       varchar2);
+  procedure fa_create_accounting(p_book_type_code  varchar2,
+                                 p_asset_id        number,
+                                 p_accounting_mode varchar2);
+  procedure xla_by_entity(p_application_id number,
+                          p_entity_code    varchar2,
+                          p_object_id      number,
+                          p_new_date       date);
+  procedure xla_by_event(p_event_id number, p_new_date date);
+  function get_posting_name(p_posting_status varchar2) return varchar2;
+end evn_update_date_pkg;
+/
+create or replace package body evn_update_date_pkg is
+
+  /* FPT ERP Update Date Package
+           - GL Journal
+           - AP Invoice
+   Creation date: Feb 2016
+   Created by: TamPT5
+   Collect from: MSB, VTB, BIDV
+   Version: 1.0
+  */
+
+  -- GL Journal
+  ----------------------------
+  procedure gl_journal(errbuf      out nocopy varchar2,
+                       retcode     out nocopy varchar2,
+                       p_ledger_id number,
+                       p_segment1  varchar2,
+                       p_batch_id  number,
+                       p_new_date  varchar2) is
+    v_new_date date;
+    cursor c is
+      select t.je_batch_id,
+             t.batch_name,
+             t.description,
+             t.status,
+             t.default_effective_date
+        from evn_udd_gl_journals_v t
+       where (t.branch_code = p_segment1 or p_segment1 is null)
+         and (t.je_batch_id = p_batch_id or p_batch_id is null)
+         and t.ledger_id = p_ledger_id
+       order by t.batch_name;
+  begin
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('GL Date      Batch Name');
+    write_output(rpad('-', 100, '-'));
+  
+    for r in c loop
+    
+      -- Update Journal Lines
+      update gl_je_lines l
+         set l.effective_date = v_new_date,
+             l.period_name    = to_char(v_new_date, 'mm-rrrr')
+       where l.je_header_id in
+             (select h.je_header_id
+                from gl.gl_je_headers h
+               where h.je_batch_id = r.je_batch_id);
+    
+      -- Update Journal Headers
+      update gl_je_headers h
+         set h.default_effective_date = v_new_date,
+             h.period_name            = to_char(v_new_date, 'mm-rrrr')
+       where h.je_batch_id = r.je_batch_id;
+    
+      -- Update Journal Batches
+      update gl_je_batches b
+         set b.default_effective_date = v_new_date,
+             b.default_period_name    = to_char(v_new_date, 'mm-rrrr')
+       where b.je_batch_id = r.je_batch_id;
+    
+      write_output(to_char(r.default_effective_date, 'dd/mm/rrrr') ||
+                   '   ' || r.batch_name);
+    
+    end loop;
+  
+    -- Finally Commit
+    commit;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  /*
+  PhongDV2: ĐTrường hợp User nhập Ngày hóa đơn VAT, user nhập nhầm rất nhiều
+  =>Chi Thanh8 yeu cau chi update invoice date
+  */
+  procedure ap_invoice_date(errbuf       out nocopy varchar2,
+                            retcode      out nocopy varchar2,
+                            p_company_code   varchar2,
+                            p_invoice_id number,
+                            p_new_date   varchar2) is
+    v_new_date date;
+  
+    -- Lay cac invoice chua final post
+    cursor c is
+      select t.invoice_id, t.invoice_num
+        from evn_ap_invoice_all_v t
+       where (t.branch_code = p_company_code or p_company_code is null)
+         and (t.invoice_id = p_invoice_id or p_invoice_id is null);
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    for r in c loop
+      -- Invoice
+      update ap_invoices_all aia
+         set aia.invoice_date = v_new_date
+       where aia.invoice_id = r.invoice_id;
+    
+      write_output('Invoice ' || r.invoice_num ||
+                   ': Updated Invoice Date to ' ||
+                   to_char(v_new_date, 'dd/mm/rrrr'));
+    
+    end loop;
+  
+    -- Finally Commit
+    commit;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  /* AP Invoice
+  Posting Status: 'Y' - Posted
+                  'N' - Unposted
+                  'S' - Selected
+                  'P' - Partially Posted
+                  'D' - Draft
+  Chi update nhung in voi chua
+  */
+  procedure ap_invoice(errbuf       out nocopy varchar2,
+                       retcode      out nocopy varchar2,
+                       p_company_code   varchar2,
+                       p_invoice_id number,
+                       p_new_date   varchar2) is
+    v_new_date date;
+  
+    -- Lay cac invoice chua final post
+    cursor c is
+      select t.invoice_id,
+             t.invoice_num,
+             t.description,
+             t.posting_status,
+             t.gl_date
+        from evn_udd_ap_invoices_v t
+       where (t.branch_code = p_company_code or p_company_code is null)
+         and (t.invoice_id = p_invoice_id or p_invoice_id is null);
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('GL Date      Invoice number      Posting Status    Description');
+    write_output(rpad('-', 100, '-'));
+  
+    for r in c loop
+      -- Truong hop Partial chi update Distribution, Event
+      -- Co truong hop line cung Partial -> Khong update line
+      if r.posting_status = 'P' then
+      
+        -- Distribution
+        update ap.ap_invoice_distributions_all aid
+           set aid.accounting_date = v_new_date,
+               aid.period_name     = to_char(v_new_date, 'mm-rrrr')
+         where aid.invoice_id = r.invoice_id
+           and aid.posted_flag <> 'Y';
+      
+        -- Event
+        update xla.xla_events xe
+           set xe.event_date = v_new_date, xe.transaction_date = v_new_date
+         where xe.event_id in
+               (select aid.accounting_event_id
+                  from ap.ap_invoice_distributions_all aid
+                 where aid.invoice_id = r.invoice_id
+                   and aid.posted_flag <> 'Y')
+           and xe.process_status_code <> 'P';
+      
+      else
+      
+        -- Invoice
+        update ap_invoices_all aia
+           set aia.gl_date = v_new_date, aia.invoice_date = v_new_date
+         where aia.invoice_id = r.invoice_id;
+      
+        -- Invoice Lines
+        update ap_invoice_lines_all aila
+           set aila.accounting_date = v_new_date,
+               aila.period_name     = to_char(v_new_date, 'mm-rrrr')
+         where aila.invoice_id = r.invoice_id;
+      
+        -- Invoice Distribution
+        update ap_invoice_distributions_all aida
+           set aida.accounting_date = v_new_date,
+               aida.period_name     = to_char(v_new_date, 'mm-rrrr')
+         where aida.invoice_id = r.invoice_id;
+      
+        -- Update Prepay History
+        update ap.ap_prepay_history_all t
+           set t.accounting_date = v_new_date
+         where t.invoice_id = r.invoice_id;
+      
+        -- Tax Line
+        update zx_lines zl
+           set zl.tax_currency_conversion_date = v_new_date,
+               zl.trx_date                     = v_new_date,
+               zl.tax_point_date               = v_new_date,
+               zl.trx_line_date                = v_new_date,
+               zl.tax_determine_date           = v_new_date,
+               zl.tax_date                     = v_new_date
+         where zl.trx_id = r.invoice_id;
+      
+        -- Tax Detail
+        update zx_lines_det_factors zd
+           set zd.trx_communicated_date = v_new_date,
+               zd.trx_line_date         = v_new_date,
+               zd.trx_date              = v_new_date,
+               zd.trx_line_gl_date      = v_new_date,
+               zd.trx_due_date          = v_new_date
+         where zd.trx_id = r.invoice_id;
+      
+        -- Tax Distribution
+        update zx_rec_nrec_dist dis
+           set dis.tax_currency_conversion_date = v_new_date,
+               dis.gl_date                      = v_new_date
+         where dis.trx_id = r.invoice_id;
+      
+        -- Update XLA Entity
+        xla_by_entity(p_application_id => 200,
+                      p_entity_code    => 'AP_INVOICES',
+                      p_object_id      => r.invoice_id,
+                      p_new_date       => v_new_date);
+      
+      end if;
+    
+      write_output(to_char(r.gl_date, 'dd/mm/rrrr') || '   ' ||
+                   rpad(r.invoice_num, 20, ' ') ||
+                   rpad(get_posting_name(r.posting_status), 18, ' ') ||
+                   r.description);
+    
+    end loop;
+  
+    -- Finally Commit
+    commit;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  -- AP Payments
+  --------------------------
+  procedure ap_payment(errbuf     out nocopy varchar2,
+                       retcode    out nocopy varchar2,
+                       p_segment1 varchar2,
+                       p_check_id number,
+                       p_new_date varchar2) is
+    v_new_date date;
+  
+    cursor c is
+      select t.check_id,
+             t.check_number,
+             t.description,
+             t.posting_status,
+             t.check_date
+        from evn_udd_ap_payments_v t
+       where (t.branch_code = p_segment1 or p_segment1 is null)
+         and (t.check_id = p_check_id or p_check_id is null);
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('GL Date      Payment number      Posting Status    Description');
+    write_output(rpad('-', 100, '-'));
+  
+    -- Loop
+    for r in c loop
+      -- Truong hop Partial chi update
+      -- XLA Event, Payment History, Invoice Payment
+      if r.posting_status = 'P' then
+      
+        -- Invoice Payment
+        update ap.ap_invoice_payments_all ip
+           set ip.accounting_date = v_new_date,
+               /*ip.exchange_date   = TRUNC(SYSDATE),*/
+               ip.period_name = to_char(v_new_date, 'mm-rrrr')
+         where ip.check_id = r.check_id
+           and ip.posted_flag <> 'Y';
+      
+        -- Payment History
+        update ap.ap_payment_history_all ph
+           set ph.accounting_date = v_new_date
+         where ph.check_id = r.check_id
+           and ph.posted_flag <> 'Y';
+      
+        -- XLA Event
+        update xla.xla_events xe
+           set xe.event_date = v_new_date, xe.transaction_date = v_new_date
+         where xe.entity_id in
+               (select xte.entity_id
+                  from xla.xla_transaction_entities xte
+                 where xte.application_id = 200
+                   and xte.entity_code = 'AP_PAYMENTS'
+                   and xte.source_id_int_1 = r.check_id)
+           and xe.process_status_code <> 'P';
+      
+      else
+      
+        -- Invoice Payment
+        update ap_invoice_payments_all aip
+           set aip.accounting_date = v_new_date,
+               aip.period_name     = to_char(v_new_date, 'mm-rrrr')
+         where aip.check_id = r.check_id;
+      
+        -- Check
+        update ap_checks_all ac
+           set ac.check_date = v_new_date
+         where ac.check_id = r.check_id;
+      
+        -- Payment History
+        update ap_payment_history_all aph
+           set aph.accounting_date = v_new_date
+         where aph.check_id = r.check_id;
+      
+        -- Update XLA Entity
+        xla_by_entity(p_application_id => 200,
+                      p_entity_code    => 'AP_PAYMENTS',
+                      p_object_id      => r.check_id,
+                      p_new_date       => v_new_date);
+      
+      end if;
+    
+      write_output(to_char(r.check_date, 'dd/mm/rrrr') || '   ' ||
+                   rpad(r.check_number, 20, ' ') ||
+                   rpad(get_posting_name(r.posting_status), 18, ' ') ||
+                   r.description);
+    
+    end loop;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  -- AR Transaction
+  --------------------------
+  procedure ar_transaction(errbuf            out nocopy varchar2,
+                           retcode           out nocopy varchar2,
+                           p_segment1        varchar2,
+                           p_customer_trx_id number,
+                           p_new_date        varchar2) is
+    v_new_date date;
+    v_count    number;
+  
+    cursor c is
+      select t.customer_trx_id, t.trx_number, t.trx_date, t.comments
+        from evn_udd_ar_transaction_v t
+       where (t.branch_code = p_segment1 or p_segment1 is null)
+         and (t.customer_trx_id = p_customer_trx_id or
+             p_customer_trx_id is null);
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('Trx Date     Trans number      Description');
+    write_output(rpad('-', 100, '-'));
+  
+    for r in c loop
+      -- Check Partial Accounting
+      select count(1)
+        into v_count
+        from ra_customer_trx_all          t,
+             xla.xla_transaction_entities xte,
+             xla.xla_events               xe
+       where t.customer_trx_id = xte.source_id_int_1
+         and xte.application_id = 222
+         and xte.entity_code = 'TRANSACTIONS'
+         and xte.entity_id = xe.entity_id
+         and xe.application_id = 222
+         and xe.event_status_code = 'P'
+         and t.customer_trx_id = r.customer_trx_id;
+    
+      if v_count = 0 then
+      
+        -- Transaction
+        update ar.ra_customer_trx_all t
+           set t.trx_date      = v_new_date,
+               t.exchange_date = v_new_date,
+               t.term_due_date = nvl2(t.term_due_date, v_new_date, null)
+         where t.customer_trx_id = r.customer_trx_id;
+      
+        -- Summary History
+        update ar.ar_trx_summary_hist tsh
+           set tsh.trx_date = v_new_date
+         where tsh.customer_trx_id = r.customer_trx_id;
+      
+        -- Payment Schedule
+        update ar.ar_payment_schedules_all ps
+           set ps.trx_date      = v_new_date,
+               ps.gl_date       = v_new_date,
+               ps.due_date      = nvl2(ps.due_date, v_new_date, null),
+               ps.exchange_date = nvl2(ps.exchange_date, v_new_date, null)
+         where ps.customer_trx_id = r.customer_trx_id;
+      
+        write_output(to_char(r.trx_date, 'dd/mm/rrrr') || '   ' ||
+                     rpad(r.trx_number, 18, ' ') || r.comments);
+      
+      end if;
+    
+    end loop;
+  
+    -- Theo Event ID
+    for re in (select xe.event_id
+                 from ra_customer_trx_all          t,
+                      fpt_branches_v               b,
+                      xla.xla_transaction_entities xte,
+                      xla.xla_events               xe
+                where t.org_id = b.org_id
+                  and t.customer_trx_id = xte.source_id_int_1
+                  and xte.application_id = 222
+                  and xte.entity_code = 'TRANSACTIONS'
+                  and xte.entity_id = xe.entity_id
+                  and xe.application_id = 222
+                  and xe.event_status_code <> 'P'
+                  and (b.branch_code = p_segment1 or p_segment1 is null)
+                  and (t.customer_trx_id = p_customer_trx_id or
+                      p_customer_trx_id is null)) loop
+    
+      -- Line Distribution
+      update ar.ra_cust_trx_line_gl_dist_all tld
+         set tld.gl_date = v_new_date
+       where tld.event_id = re.event_id;
+    
+      -- Receivable Application
+      update ar.ar_receivable_applications_all ra
+         set ra.gl_date          = v_new_date,
+             ra.apply_date       = v_new_date,
+             ra.reversal_gl_date = nvl2(ra.reversal_gl_date,
+                                        v_new_date,
+                                        null)
+       where ra.event_id = re.event_id;
+    
+      -- XLA By Entity
+      xla_by_event(p_event_id => re.event_id, p_new_date => v_new_date);
+    
+    end loop;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  -- AR Receipt
+  -----------------------
+  procedure ar_receipt(errbuf            out nocopy varchar2,
+                       retcode           out nocopy varchar2,
+                       p_company_code        varchar2,
+                       p_cash_receipt_id number,
+                       p_new_date        varchar2) is
+    v_new_date date;
+    v_count    number;
+  
+    cursor c is
+      select distinct rec.cash_receipt_id,
+                      rec.receipt_number,
+                      rec.receipt_date,
+                      rec.comments
+        from evn_udd_ar_receipts_v rec
+       where (rec.branch_code = p_company_code or p_company_code is null)
+         and (rec.cash_receipt_id = p_cash_receipt_id or
+             p_cash_receipt_id is null);
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('GL Date      Receipt number      Description');
+    write_output(rpad('-', 100, '-'));
+  
+    for r in c loop
+    
+      select count(1)
+        into v_count
+        from ar_cash_receipts_all         cr,
+             fpt_branches_v               b,
+             xla.xla_transaction_entities xte,
+             xla.xla_events               xe
+       where cr.org_id = b.org_id
+         and cr.cash_receipt_id = xte.source_id_int_1
+         and xte.application_id = 222
+         and xte.entity_code = 'RECEIPTS'
+         and xte.entity_id = xe.entity_id
+         and xe.application_id = 222
+         and xe.event_status_code = 'P'
+         and cr.cash_receipt_id = r.cash_receipt_id;
+    
+      -- Truong hop giao dich chua 
+      if v_count = 0 then
+      
+        -- Cash Receipt
+        update ar.ar_cash_receipts_all cr
+           set cr.receipt_date  = v_new_date,
+               cr.reversal_date = nvl2(cr.reversal_date, v_new_date, null),
+               cr.exchange_date = nvl2(cr.exchange_date, v_new_date, null),
+               cr.deposit_date  = v_new_date
+         where cr.cash_receipt_id = r.cash_receipt_id;
+      
+        -- Payment Schedule
+        update ar.ar_payment_schedules_all ps
+           set ps.trx_date      = v_new_date,
+               ps.gl_date       = v_new_date,
+               ps.due_date      = nvl2(ps.due_date, v_new_date, null),
+               ps.exchange_date = nvl2(ps.exchange_date, v_new_date, null)
+         where ps.cash_receipt_id = r.cash_receipt_id;
+      
+        write_output(to_char(r.receipt_date, 'dd/mm/rrrr') || '   ' ||
+                     rpad(r.receipt_number, 20, ' ') || r.comments);
+      
+      end if;
+    
+    end loop;
+  
+    -- Theo Event
+    for re in (select xe.event_id
+                 from ar_cash_receipts_all         cr,
+                      fpt_branches_v               b,
+                      xla.xla_transaction_entities xte,
+                      xla.xla_events               xe
+                where cr.org_id = b.org_id
+                  and cr.cash_receipt_id = xte.source_id_int_1
+                  and xte.application_id = 222
+                  and xte.entity_code = 'RECEIPTS'
+                  and xte.entity_id = xe.entity_id
+                  and xe.application_id = 222
+                  and xe.event_status_code <> 'P'
+                  and (b.branch_code = p_company_code or p_company_code is null)
+                  and (cr.cash_receipt_id = p_cash_receipt_id or
+                      p_cash_receipt_id is null)) loop
+    
+      -- Cash Distribution
+      update ar.ar_misc_cash_distributions_all cd
+         set cd.gl_date = v_new_date, cd.apply_date = v_new_date
+       where cd.event_id = re.event_id;
+    
+      -- Cash Receipt History
+      update ar.ar_cash_receipt_history_all crh
+         set crh.trx_date         = v_new_date,
+             crh.gl_date          = v_new_date,
+             crh.reversal_gl_date = nvl2(crh.reversal_gl_date,
+                                         v_new_date,
+                                         null),
+             crh.exchange_date    = nvl2(crh.exchange_date, v_new_date, null)
+       where crh.event_id = re.event_id;
+    
+      -- Receivable
+      update ar.ar_receivable_applications_all ra
+         set ra.gl_date          = v_new_date,
+             ra.apply_date       = v_new_date,
+             ra.reversal_gl_date = nvl2(ra.reversal_gl_date,
+                                        v_new_date,
+                                        null)
+       where ra.event_id = re.event_id;
+    
+      -- XLA by Event
+      xla_by_event(p_event_id => re.event_id, p_new_date => v_new_date);
+    
+    end loop;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  -- FA Asset
+  ---------------------------
+  procedure fa_asset(errbuf           out nocopy varchar2,
+                     retcode          out nocopy varchar2,
+                     p_book_type_code varchar2,
+                     p_asset_id       number,
+                     p_new_date       varchar2) is
+    v_count    number;
+    v_new_date date;
+  begin
+    -- New Date
+    if p_new_date is null then
+      v_new_date := trunc(sysdate);
+    else
+      v_new_date := to_date(p_new_date, g_date_format);
+    end if;
+  
+    write_output('Update GL Date to ' || to_char(v_new_date, 'dd/mm/rrrr') ||
+                 chr(10));
+    write_output('GL Date      Asset number        Description');
+    write_output(rpad('-', 100, '-'));
+  
+    select count(1)
+      into v_count
+      from evn_udd_fa_entities_v v
+     where (v.book_type_code = p_book_type_code or p_book_type_code is null)
+       and (v.asset_id = p_asset_id or p_asset_id is null)
+       and v.process_status_code <> 'D';
+  
+    -- Truong hop tai san chua hach toan
+    -- Create Accounting
+    if v_count > 0 then
+      fa_create_accounting(p_book_type_code  => p_book_type_code,
+                           p_asset_id        => p_asset_id,
+                           p_accounting_mode => 'D');
+    end if;
+  
+    -- Update
+    for r in (select v.event_id, v.asset_number, v.event_date, v.description
+                from evn_udd_fa_entities_v v
+               where (v.book_type_code = p_book_type_code or
+                     p_book_type_code is null)
+                 and (v.asset_id = p_asset_id or p_asset_id is null)
+                 and v.process_status_code = 'D') loop
+    
+      xla_by_event(p_event_id => r.event_id, p_new_date => v_new_date);
+      write_output(to_char(r.event_date, 'dd/mm/rrrr') || '   ' ||
+                   rpad(r.asset_number, 20, ' ') || r.description);
+    end loop;
+  
+    commit;
+  
+  exception
+    when others then
+      rollback;
+      errbuf  := 'Exception: ' || substr(sqlerrm, 1, 100);
+      retcode := 2;
+      write_output('Exception: ' || sqlerrm);
+      write_output('at ' || dbms_utility.format_error_backtrace);
+  end;
+
+  -- FA Create Accounting by Event
+  --------------------------------
+  procedure fa_create_accounting(p_book_type_code  varchar2,
+                                 p_asset_id        number,
+                                 p_accounting_mode varchar2) is
+    l_event_source_info   xla_events_pub_pkg.t_event_source_info;
+    l_accounting_mode     varchar2(1);
+    l_accounting_flag     varchar2(1);
+    l_gl_posting_flag     varchar2(1);
+    l_transfer_flag       varchar2(1);
+    l_accounting_batch_id number;
+    l_request_id          number;
+    l_errbuf              varchar2(500);
+    l_retcode             number;
+  
+    cursor c is
+      select distinct a.entity_id,
+                      a.entity_code,
+                      a.source_id_int_1,
+                      a.source_id_char_1,
+                      a.transaction_number,
+                      a.description,
+                      a.ledger_id,
+                      a.legal_entity_id
+        from evn_udd_fa_entities_v a
+       where (a.book_type_code = p_book_type_code or
+             p_book_type_code is null)
+         and (a.asset_id = p_asset_id or p_asset_id is null)
+         and a.process_status_code <> 'D';
+  begin
+    -- Loop by Entity
+    for r in c loop
+      write_log('');
+      write_log('---------------------------------------------------');
+      write_log('p_book_type_code: ' || p_book_type_code);
+      write_log('p_asset_id: ' || p_asset_id);
+      write_log('p_accounting_mode: ' || p_accounting_mode);
+      write_log('entity_id: ' || r.entity_id);
+      write_log('entity_code: ' || r.entity_code);
+      write_log('source_id_int_1: ' || r.source_id_int_1);
+      write_log('source_id_char_1: ' || r.source_id_char_1);
+      write_log('description: ' || r.description);
+      write_log('---------------------------------------------------');
+    
+      -- Assign asset information
+      l_event_source_info.application_id     := 140;
+      l_event_source_info.legal_entity_id    := r.legal_entity_id;
+      l_event_source_info.ledger_id          := r.ledger_id;
+      l_event_source_info.entity_type_code   := r.entity_code;
+      l_event_source_info.transaction_number := r.transaction_number;
+      l_event_source_info.source_id_int_1    := r.source_id_int_1;
+      l_event_source_info.source_id_char_1   := r.source_id_char_1;
+    
+      -- Define Accounting Method
+      if p_accounting_mode = 'D' then
+        l_accounting_mode := 'D';
+        l_accounting_flag := 'Y';
+        l_gl_posting_flag := 'N';
+        l_transfer_flag   := 'N';
+      elsif p_accounting_mode = 'F' then
+        l_accounting_mode := 'F';
+        l_accounting_flag := 'Y';
+        l_gl_posting_flag := 'N';
+        l_transfer_flag   := 'N';
+      elsif p_accounting_mode = 'P' then
+        l_accounting_mode := 'F';
+        l_accounting_flag := 'Y';
+        l_gl_posting_flag := 'Y';
+        l_transfer_flag   := 'Y';
+      else
+        write_output('p_accounting_mode is invalid');
+        app_exception.raise_exception();
+      end if;
+    
+      xla_security_pkg.set_security_context(140);
+    
+      l_errbuf  := null;
+      l_retcode := null;
+    
+      xla_accounting_pub_pkg.accounting_program_document(p_event_source_info   => l_event_source_info,
+                                                         p_application_id      => 140,
+                                                         p_entity_id           => r.entity_id,
+                                                         p_accounting_flag     => l_accounting_flag,
+                                                         p_accounting_mode     => l_accounting_mode,
+                                                         p_transfer_flag       => l_transfer_flag,
+                                                         p_gl_posting_flag     => l_gl_posting_flag,
+                                                         p_offline_flag        => 'N',
+                                                         p_accounting_batch_id => l_accounting_batch_id, --Out
+                                                         p_errbuf              => l_errbuf, --Out
+                                                         p_retcode             => l_retcode, --Out
+                                                         p_request_id          => l_request_id); --Out
+      write_log('l_request_id: ' || l_request_id);
+      write_log('l_retcode: ' || l_retcode);
+      write_log('l_errbuf: ' || l_errbuf);
+    
+      commit;
+    
+    end loop;
+  
+  exception
+    when others then
+      write_output('fa_create_accounting - exception: ' || sqlerrm);
+  end;
+
+  -- Update XLA Entity
+  ----------------------------
+  procedure xla_by_entity(p_application_id number,
+                          p_entity_code    varchar2,
+                          p_object_id      number,
+                          p_new_date       date) is
+    cursor c is
+      select xe.event_id
+        from xla.xla_transaction_entities xte, xla.xla_events xe
+       where xte.entity_code = p_entity_code
+         and xte.application_id = p_application_id
+         and xte.source_id_int_1 = p_object_id
+         and xte.entity_id = xe.entity_id
+         and xe.application_id = p_application_id
+         and xe.process_status_code <> 'P';
+  begin
+    -- Loop Event
+    for r in c loop
+      xla_by_event(p_event_id => r.event_id, p_new_date => p_new_date);
+    
+    end loop;
+  
+  end;
+
+  -- XLA Entity by Event ID
+  -----------------------------
+  procedure xla_by_event(p_event_id number, p_new_date date) is
+    v_new_date date := nvl(p_new_date, trunc(sysdate));
+  begin
+    write_log('Update event date by p_event_id = ' || p_event_id);
+    -- Update Event
+    update xla.xla_events xe
+       set xe.event_date = v_new_date, xe.transaction_date = v_new_date
+     where xe.event_id = p_event_id;
+  
+    -- Update Header
+    update xla.xla_ae_headers xh
+       set xh.accounting_date = v_new_date,
+           xh.period_name     = to_char(p_new_date, 'mm-rrrr')
+     where xh.event_id = p_event_id;
+  
+    -- Update Line
+    update xla.xla_ae_lines xl
+       set xl.accounting_date = v_new_date
+     where xl.ae_header_id in
+           (select xh.ae_header_id
+              from xla.xla_ae_headers xh
+             where xh.event_id = p_event_id);
+  
+  end;
+
+  -- Get Posting Status Name
+  ------------------------------
+  function get_posting_name(p_posting_status varchar2) return varchar2 is
+    v_posting_status varchar2(30);
+  begin
+    select t.displayed_field
+      into v_posting_status
+      from ap_lookup_codes t
+     where t.lookup_type = 'POSTING STATUS'
+       and t.lookup_code = p_posting_status;
+  
+    return v_posting_status;
+  
+  exception
+    when others then
+      return 'N/A';
+  end;
+
+end evn_update_date_pkg;
+/

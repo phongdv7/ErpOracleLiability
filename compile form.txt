@@ -1,0 +1,10 @@
+. ./APPSTEST_testerp.env
+
+APPSTEST_testerp.env
+
+export FORMS_PATH=$FORMS_PATH:$AU_TOP/forms/US
+//export FORMS60_PATH=$FORS60_PATH:$AU_TOP/forms/US:$AU_TOP/resource
+
+cd /u02/DEVHCM/apps/apps_st/appl/inv/12.0.0/forms/US
+
+frmcmp_batch module=EVN_INV_C07_02 userid=apps/LuyndsW098

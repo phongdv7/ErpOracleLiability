@@ -1,0 +1,41 @@
+select a.org_id, a.* from ar.ar_adjustments_all a;--OK
+select b.org_id, b.* from ar.ar_receivable_applications_all b where b.cash_receipt_id = 648814--X
+and b.org_id = 2120;
+
+select distinct b.org_id, v.branch_name, v.branch_code
+  from ar.ar_receivable_applications_all b, apps.fpt_branches_v v
+ where b.cash_receipt_id not in (select a.cash_receipt_id
+                                   from ar.ar_cash_receipts_all a
+                                 /*where a.org_id = 2134*/
+                                 )
+   and b.org_id = v.org_id
+/*and b.org_id = 2134*/
+select b.org_id, b.* --distinct b.org_id, v.branch_name, v.branch_code
+  from ar.ar_receivable_applications_all b, apps.fpt_branches_v v
+ where b.cash_receipt_id not in
+       (select a.cash_receipt_id
+          from ar.ar_cash_receipts_all a
+         where a.org_id = 2126)
+   and b.org_id = v.org_id
+   and b.org_id = 2126
+
+delete from ar.ar_receivable_applications_all b
+ where b.cash_receipt_id not in
+       (select a.cash_receipt_id
+          from ar.ar_cash_receipts_all a
+         where a.org_id = 2126)
+   and b.org_id = 2126
+
+
+
+select * from AR_RECEIVABLE_APPLICATIONS_ALL ara where ara.cash_receipt_id = 648814; --OK
+select * from ar.AR_TRX_SUMMARY_HIST ats where ats.cash_receipt_id = 648814;--x
+select * from ar.AR_TRX_SUMMARY_HIST ats where ats.cash_receipt_id not in (select a.cash_receipt_id
+                                from ar.ar_cash_receipts_all a
+                               where a.org_id = 2134);
+--= 648814;--x
+
+select * from ar.RA_CUSTOMER_TRX_LINES_GT a where a.c ; --TRAN
+select * from ar.RA_CUST_TRX_LINE_SALESREPS_ALL a where a.customer_trx_id ;--TRAN
+--select * from ar.AR_CASH_RECEIPTS a where a.;
+select * from ar.ra_interface_lines_all;

@@ -1,0 +1,53 @@
+-- Create table
+--drop table BACKUP.EVN_AP_PAYMENT_HIST_DISTS_BAK
+create table BACKUP.EVN_AP_PAYMENT_HIST_DISTS
+(
+  PAYMENT_HIST_DIST_ID          NUMBER(15) not null,
+  ACCOUNTING_EVENT_ID           NUMBER(15) not null,
+  PAY_DIST_LOOKUP_CODE          VARCHAR2(30) not null,
+  INVOICE_DISTRIBUTION_ID       NUMBER(15) not null,
+  AMOUNT                        NUMBER not null,
+  PAYMENT_HISTORY_ID            NUMBER(15) not null,
+  INVOICE_PAYMENT_ID            NUMBER(15) not null,
+  BANK_CURR_AMOUNT              NUMBER,
+  CLEARED_BASE_AMOUNT           NUMBER,
+  HISTORICAL_FLAG               VARCHAR2(1),
+  INVOICE_DIST_AMOUNT           NUMBER,
+  INVOICE_DIST_BASE_AMOUNT      NUMBER,
+  INVOICE_ADJUSTMENT_EVENT_ID   NUMBER(15),
+  MATURED_BASE_AMOUNT           NUMBER,
+  PAID_BASE_AMOUNT              NUMBER,
+  ROUNDING_AMT                  NUMBER,
+  REVERSAL_FLAG                 VARCHAR2(1),
+  REVERSED_PAY_HIST_DIST_ID     NUMBER(15),
+  CREATED_BY                    NUMBER(15),
+  CREATION_DATE                 DATE,
+  LAST_UPDATE_DATE              DATE,
+  LAST_UPDATED_BY               NUMBER(15),
+  LAST_UPDATE_LOGIN             NUMBER(15),
+  PROGRAM_APPLICATION_ID        NUMBER(15),
+  PROGRAM_ID                    NUMBER(15),
+  PROGRAM_LOGIN_ID              NUMBER(15),
+  PROGRAM_UPDATE_DATE           DATE,
+  REQUEST_ID                    NUMBER(15),
+  AWT_RELATED_ID                NUMBER(15),
+  RELEASE_INV_DIST_DERIVED_FROM NUMBER(15),
+  PA_ADDITION_FLAG              VARCHAR2(1),
+  AMOUNT_VARIANCE               NUMBER,
+  INVOICE_BASE_AMT_VARIANCE     NUMBER,
+  QUANTITY_VARIANCE             NUMBER,
+  INVOICE_BASE_QTY_VARIANCE     NUMBER,
+  GAIN_LOSS_INDICATOR           VARCHAR2(1)
+)
+tablespace APPS_TS_TX_DATA
+  pctfree 10
+  initrans 1
+  maxtrans 255
+  storage
+  (
+    initial 128K
+    next 128K
+    minextents 1
+    maxextents unlimited
+    pctincrease 0
+  );
