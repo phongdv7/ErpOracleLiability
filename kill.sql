@@ -17,3 +17,4 @@ and s.LAST_CALL_ET>60
 order by s.LAST_CALL_ET desc;
 --------------
 ALTER SYSTEM KILL SESSION '2022, 1453' IMMEDIATE;
+---
