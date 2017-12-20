@@ -18,11 +18,12 @@ select fsp.set_of_books_id,
                fv.start_date_active,
                fv.end_date_active
           from applsys.fnd_flex_value_sets fvs, apps.fnd_flex_values_vl fv
-         where fvs.flex_value_set_name = 'EVN_CONGTY'
+         where fvs.flex_value_set_name = 'SBV_COA_COMPANY'
            and fvs.flex_value_set_id = fv.flex_value_set_id
            and fv.summary_flag = 'N') c
  where fsp.org_id = ou.organization_id
    and fsp.accts_pay_code_combination_id = gcc.code_combination_id
    and gcc.segment1 = c.branch_code
    and hoi.organization_id = fsp.org_id
+   and fsp.org_id not in (1971, 1972)
    and hoi.org_information_context = 'Operating Unit Information';

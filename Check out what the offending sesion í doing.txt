@@ -1,0 +1,18 @@
+Check out what the offending session is doing:
+
+BREAK ON sid ON username ON osuser ON os_pid ON program
+
+SELECT s.sid,
+       NVL(s.username, 'ORACLE PROC') username,
+       s.osuser,
+       p.spid os_pid,
+       s.program,
+       t.sql_text
+FROM   v$session s,
+       v$sqltext t,
+       v$process p
+WHERE  s.sql_hash_value = t.hash_value
+AND    s.paddr = p.addr
+AND    s.sid = &session_id
+AND    t.piece = 0 -- optional to list just the first line
+ORDER BY s.sid, t.hash_value, t.piece

@@ -1,0 +1,14 @@
+declare
+  cursor c is
+    select cr.request_id
+      from fnd_concurrent_programs cp, fnd_concurrent_requests cr
+     where cp.concurrent_program_name = 'ASSSET_PLSQL'
+       and cp.concurrent_program_id = cr.concurrent_program_id
+       and cp.application_id = cr.program_application_id;
+begin
+  for r in c loop
+    delete from fnd_conc_pp_actions
+     where concurrent_request_id = r.request_id;
+    delete from fnd_concurrent_requests where request_id = r.request_id;
+  end loop;
+end;

@@ -1,0 +1,15 @@
+Em gửi cả nhà tham khảo cách tìm file RDF, FMX, FMB nào đang gọi pkg.
+
+Login vào ssh:
+
+bash-4.4$ cd /u01/oracle/apps/apps_st/appl/fa/12.0.0/
+bash-4.4$ find ./ -exec grep -l 'FPT_FA0201_PKG_201603' {} \;
+./reports/US/FA0409_QT_2015.rdf
+./reports/VN/Backup20161202/FA0409_QT_2015.rdf_20160401_1
+./reports/VN/Backup20161202/FA0409_QT_2015.rdf_20160401_2
+./reports/VN/Backup20161202/FA0409_QT_2015.rdf_20160404
+./reports/VN/Backup20161202/FA0409_QT_2015.rdf_20160405
+./reports/VN/FA0408_QT_2015.rdf
+./reports/VN/FA0409_QT_2015.rdf
+./reports/VN/FA0409_QT_2015.rdf_20161230
+bash-4.4$
